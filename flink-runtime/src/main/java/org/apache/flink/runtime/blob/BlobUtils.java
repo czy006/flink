@@ -272,6 +272,10 @@ public class BlobUtils {
         }
     }
 
+    public static BlobKey getBlobKeyFromString(String key) {
+        return BlobKey.fromString(key);
+    }
+
     /**
      * Creates a new instance of the message digest to use for the BLOB key computation.
      *

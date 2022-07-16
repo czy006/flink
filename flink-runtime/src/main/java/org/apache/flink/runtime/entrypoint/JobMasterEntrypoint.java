@@ -17,6 +17,7 @@
  */
 package org.apache.flink.runtime.entrypoint;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
@@ -24,23 +25,28 @@ import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.SchedulerExecutionMode;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.plugin.PluginManager;
+import org.apache.flink.core.plugin.PluginUtils;
 import org.apache.flink.core.security.FlinkSecurityManager;
+import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobSharedClient;
+import org.apache.flink.runtime.blob.BlobUtils;
+import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.dispatcher.JobManagerRunnerFactory;
 import org.apache.flink.runtime.dispatcher.JobMasterServiceLeadershipRunnerFactory;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
-import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmaster.DefaultSlotPoolServiceSchedulerFactory;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
-
 import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
-
 import org.apache.flink.runtime.jobmaster.SlotPoolServiceSchedulerFactory;
-import org.apache.flink.runtime.jobmaster.factories.JobManagerJobMetricGroupFactory;
+import org.apache.flink.runtime.jobmaster.factories.DefaultJobManagerJobMetricGroupFactory;
+import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
+import org.apache.flink.runtime.metrics.MetricRegistryImpl;
+import org.apache.flink.runtime.metrics.ReporterSetup;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.rpc.AddressResolution;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -58,8 +64,8 @@ import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.runtime.util.Hardware;
 import org.apache.flink.runtime.util.JvmShutdownSafeguard;
 import org.apache.flink.runtime.util.SignalHandler;
+import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkUserCodeClassLoaders;
-
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 
@@ -68,7 +74,13 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.GuardedBy;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetSocketAddress;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -92,43 +104,104 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
     private static final Time INITIALIZATION_SHUTDOWN_TIMEOUT = Time.seconds(30L);
 
     @GuardedBy("lock")
-    private ScheduledExecutorService futureExecutor;
-
-    @GuardedBy("lock")
     private RpcService rpcService;
 
+    @GuardedBy("lock")
     private JobGraph jobGraph;
+
+    @GuardedBy("lock")
     private HighAvailabilityServices haServices;
 
+    @GuardedBy("lock")
     private SlotPoolServiceSchedulerFactory slotPoolServiceSchedulerFactory;
 
+    @GuardedBy("lock")
     private BlobSharedClient blobSharedClient;
+
+    @GuardedBy("lock")
     private HeartbeatServices heartbeatServices;
-    private JobManagerJobMetricGroupFactory jobManagerJobMetricGroupFactory;
 
+    @GuardedBy("lock")
+    private JobManagerMetricGroup jobManagerMetricGroup;
+
+    @GuardedBy("lock")
     private JobManagerSharedServices jobManagerSharedServices;
-
-    private ClassLoader userCodeClassloader;
 
     private Configuration configuration;
 
+    @GuardedBy("lock")
     private RpcSystem rpcSystem;
 
+    @GuardedBy("lock")
     private JobManagerRunner jobManagerRunner;
+
+    @GuardedBy("lock")
+    private MetricRegistryImpl metricRegistry;
+
+    public JobMasterEntrypoint(Configuration configuration) {
+        this.configuration = configuration;
+    }
 
     public static void main(String[] args) {
         EnvironmentInformation.logEnvironmentInfo(
                 LOG, JobMasterEntrypoint.class.getSimpleName(), args);
         SignalHandler.register(LOG);
         JvmShutdownSafeguard.installAsShutdownHook(LOG);
+        Configuration config =
+                ClusterEntrypointUtils.parseParametersOrExit(
+                        args,
+                        new EntrypointJobMasterConfigurationParserFactory(),
+                        JobMasterEntrypoint.class);
+        JobMasterEntrypoint jobMasterEntrypoint = new JobMasterEntrypoint(config);
+        jobMasterEntrypoint.runJobMaster();
     }
 
-    protected void initializeServices(Configuration configuration) throws Exception {
+    private void runJobMaster() {
+        LOG.info("Starting {}.", getClass().getSimpleName());
+        try {
+            FlinkSecurityManager.setFromConfiguration(configuration);
+            PluginManager pluginManager =
+                    PluginUtils.createPluginManagerFromRootFolder(configuration);
+            configureFileSystems(configuration, pluginManager);
 
+            SecurityContext securityContext = installSecurityContext(configuration);
+
+            ClusterEntrypointUtils.configureUncaughtExceptionHandler(configuration);
+            securityContext.runSecured(
+                    (Callable<Void>)
+                            () -> {
+                                runJobMaster(configuration, pluginManager);
+                                return null;
+                            });
+        } catch (Throwable t) {
+            final Throwable strippedThrowable =
+                    ExceptionUtils.stripException(t, UndeclaredThrowableException.class);
+            throw new RuntimeException(
+                    String.format(
+                            "Failed to initialize the cluster entrypoint %s.",
+                            getClass().getSimpleName()),
+                    strippedThrowable);
+        }
+    }
+
+    private void initializeJobGraph(JobID jobID, String blobKey)
+            throws Exception, ClassNotFoundException {
+        BlobKey blobKeyFromString = BlobUtils.getBlobKeyFromString(blobKey);
+        this.jobGraph = this.readJobGraph(jobID, (PermanentBlobKey) blobKeyFromString);
+    }
+
+    private JobGraph readJobGraph(JobID jobId, PermanentBlobKey permanentBlobKey)
+            throws IOException, ClassNotFoundException {
+        byte[] bytes = blobSharedClient.readFile(jobId, permanentBlobKey);
+        InputStream in = new ByteArrayInputStream(bytes);
+        ObjectInputStream objIn = new ObjectInputStream(in);
+        Object obj = objIn.readObject();
+        return (JobGraph) obj;
+    }
+
+    protected void initializeServices(Configuration configuration, PluginManager pluginManager)
+            throws Exception {
         LOG.info("Initializing jobMaster services form jobId.");
-        // conf
-        this.configuration = configuration;
-
         this.blobSharedClient =
                 new BlobSharedClient(
                         new InetSocketAddress(
@@ -157,8 +230,14 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
                         configuration.getString(JobManagerOptions.BIND_HOST),
                         configuration.getOptional(JobManagerOptions.RPC_BIND_PORT));
 
+        // update the configuration used to create the high availability services
+        configuration.setString(JobManagerOptions.ADDRESS, rpcService.getAddress());
+        configuration.setInteger(JobManagerOptions.PORT, rpcService.getPort());
+
         // ha
-        haServices = createHaServices(configuration, jobManagerSharedServices.getIoExecutor(), rpcSystem);
+        haServices =
+                createHaServices(
+                        configuration, jobManagerSharedServices.getIoExecutor(), rpcSystem);
 
         // slot pool
         slotPoolServiceSchedulerFactory =
@@ -172,7 +251,23 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
                             == JobManagerOptions.SchedulerType.Adaptive,
                     "Adaptive Scheduler is required for reactive mode");
         }
+
+        final String hostname = RpcUtils.getHostname(rpcService);
+        this.metricRegistry = createMetricRegistry(configuration, pluginManager, rpcSystem);
+        this.jobManagerMetricGroup =
+                JobManagerMetricGroup.createJobManagerMetricGroup(metricRegistry, hostname);
+
         this.jobManagerRunner = createJobManagerRunner();
+    }
+
+    protected MetricRegistryImpl createMetricRegistry(
+            Configuration configuration,
+            PluginManager pluginManager,
+            RpcSystemUtils rpcSystemUtils) {
+        return new MetricRegistryImpl(
+                MetricRegistryConfiguration.fromConfiguration(
+                        configuration, rpcSystemUtils.getMaximumMessageSizeInBytes(configuration)),
+                ReporterSetup.fromConfiguration(configuration, pluginManager));
     }
 
     public CompletableFuture<Void> stopJobMasterService() throws ClusterEntrypointException {
@@ -207,7 +302,6 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
                 this);
     }
 
-
     protected JobManagerRunner createJobManagerRunner() throws Exception {
         JobManagerRunnerFactory jobManagerRunnerFactory =
                 JobMasterServiceLeadershipRunnerFactory.INSTANCE;
@@ -218,11 +312,10 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
                 haServices,
                 heartbeatServices,
                 jobManagerSharedServices,
-                jobManagerJobMetricGroupFactory,
+                new DefaultJobManagerJobMetricGroupFactory(jobManagerMetricGroup),
                 this,
                 System.currentTimeMillis());
     }
-
 
     /**
      * create jobManager Shared Services
@@ -281,12 +374,33 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
                 futureExecutor, ioExecutor, libraryCacheManager, shuffleMaster, client);
     }
 
-    private void runJobMaster(Configuration configuration) throws Exception {
+    private void runJobMaster(Configuration configuration, PluginManager pluginManager)
+            throws Exception {
+        LOG.info("Initializing single jobMaster services.");
 
+        synchronized (lock) {
+            // TODO initializeJobGraph();
+            initializeServices(configuration, pluginManager);
+            // write host information into configuration
+            configuration.setString(JobManagerOptions.ADDRESS, rpcService.getAddress());
+            configuration.setInteger(JobManagerOptions.PORT, rpcService.getPort());
+            runJob();
+        }
     }
 
-    private void stopJobMaster(Configuration configuration) throws Exception {
+    private void runJob() throws Exception {
+        jobManagerRunner.start();
+    }
 
+    /**
+     * TODO After have to cancel job, remove dispatcher cancelJob method to do it
+     *
+     * @param configuration
+     * @return
+     * @throws Exception
+     */
+    private CompletableFuture<Void> stopJobMaster(Configuration configuration) throws Exception {
+        return jobManagerRunner.closeAsync();
     }
 
     @Override

@@ -27,10 +27,13 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ClusterOptions;
+import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.Checkpoints;
 import org.apache.flink.runtime.client.DuplicateJobSubmissionException;
@@ -92,6 +95,9 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -565,7 +571,46 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
 
     private void persistAndRunJob(JobGraph jobGraph) throws Exception {
         jobGraphWriter.putJobGraph(jobGraph);
-        runJob(createJobMasterRunner(jobGraph), ExecutionType.SUBMISSION);
+        if (configuration.getBoolean(
+                JobManagerOptions.JOB_MANAGER_JOB_MASTER_SINGLE_PROCESS_ENABLE)) {
+            try {
+                final java.nio.file.Path jobGraphFile =
+                        Files.createTempFile(
+                                "flink-jobgraph-" + jobGraph.getJobID().toString(), ".bin");
+                ObjectOutputStream objectOut =
+                        new ObjectOutputStream(Files.newOutputStream(jobGraphFile));
+                objectOut.writeObject(jobGraph);
+                ObjectInputStream inputStream =
+                        new ObjectInputStream(Files.newInputStream(jobGraphFile.toFile().toPath()));
+                BlobKey permanentBlobKey =
+                        blobServer.putPermanent(jobGraph.getJobID(), inputStream);
+                String jobGraphBlobPath = permanentBlobKey.toString();
+                log.info(
+                        "flink-jobgraph-"
+                                + jobGraph.getJobID().toString()
+                                + "is save in blob,blob "
+                                + "key "
+                                + jobGraphBlobPath);
+                createSingleJobMasterProcessRunner(jobGraphBlobPath);
+            } catch (IOException e) {
+                throw new CompletionException(
+                        new FlinkException("Failed to serialize JobGraph.", e));
+            }
+        } else {
+            runJob(createJobMasterRunner(jobGraph), ExecutionType.SUBMISSION);
+        }
+    }
+
+    /**
+     * Start Single JobMaster Run it
+     *
+     * @param jobGraphBlobPath
+     */
+    private void createSingleJobMasterProcessRunner(String jobGraphBlobPath) throws IOException {
+        List<String> command = new ArrayList<>();
+        String dir = System.getenv(ConfigConstants.ENV_FLINK_CONF_DIR);
+        log.info("createSingleJobMasterProcessRunner Dir:" + dir);
+        Runtime.getRuntime().exec("./" + dir + "/jobmaster.sh" + "-D");
     }
 
     private JobManagerRunner createJobMasterRunner(JobGraph jobGraph) throws Exception {

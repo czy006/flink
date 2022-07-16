@@ -638,6 +638,17 @@ public class JobManagerOptions {
                     .withDescription(
                             "The JobManager's ResourceID. If not configured, the ResourceID will be generated randomly.");
 
+    /**
+     * The JobMaster is single process to run it.
+     */
+    @Documentation.Section(Documentation.Sections.ALL_JOB_MANAGER)
+    public static final ConfigOption<Boolean> JOB_MANAGER_JOB_MASTER_SINGLE_PROCESS_ENABLE =
+            key("jobmanager.jobmaster.single.process.enable")
+                    .booleanType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "The JobMaster is single process to run it.");
+
     // ---------------------------------------------------------------------------------------------
 
     private JobManagerOptions() {
