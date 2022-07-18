@@ -17,39 +17,75 @@
  */
 package org.apache.flink.runtime.entrypoint;
 
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.ConfigurationUtils;
-import org.apache.flink.configuration.GlobalConfiguration;
+import org.apache.flink.runtime.entrypoint.parser.CommandLineOptions;
 import org.apache.flink.runtime.entrypoint.parser.ParserResultFactory;
 
 import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 
 import javax.annotation.Nonnull;
+
+import java.util.Properties;
 
 import static org.apache.flink.runtime.entrypoint.parser.CommandLineOptions.CONFIG_DIR_OPTION;
 import static org.apache.flink.runtime.entrypoint.parser.CommandLineOptions.DYNAMIC_PROPERTY_OPTION;
 import static org.apache.flink.runtime.entrypoint.parser.CommandLineOptions.HOST_OPTION;
 
 public class EntrypointJobMasterConfigurationParserFactory
-        implements ParserResultFactory<Configuration> {
+        implements ParserResultFactory<StandaloneJobGraphJobMasterConfiguration> {
+
+    private static final Option JOB_GRAPH_FILE =
+            Option.builder("jgraph")
+                    .longOpt("job-graph")
+                    .required(true)
+                    .hasArg(true)
+                    .argName("job graph file")
+                    .desc("File path to the job-graph")
+                    .build();
+
+    public EntrypointJobMasterConfigurationParserFactory() {}
+
     @Override
     public Options getOptions() {
         final Options options = new Options();
         options.addOption(CONFIG_DIR_OPTION);
         options.addOption(DYNAMIC_PROPERTY_OPTION);
         options.addOption(HOST_OPTION);
+        options.addOption(JOB_GRAPH_FILE);
         return options;
     }
 
     @Override
-    public Configuration createResult(@Nonnull CommandLine commandLine) throws FlinkParseException {
-        final Configuration dynamicProperties =
-                ConfigurationUtils.createConfiguration(
-                        commandLine.getOptionProperties(DYNAMIC_PROPERTY_OPTION.getOpt()));
-        final Configuration configuration =
-                GlobalConfiguration.loadConfiguration(
-                        commandLine.getOptionValue(CONFIG_DIR_OPTION.getOpt()), dynamicProperties);
-        return configuration;
+    public StandaloneJobGraphJobMasterConfiguration createResult(@Nonnull CommandLine commandLine)
+            throws FlinkParseException {
+        String jobGraphFile = commandLine.getOptionValue(JOB_GRAPH_FILE.getOpt());
+        String flinkConfDir =
+                commandLine.getOptionValue(CommandLineOptions.CONFIG_DIR_OPTION.getOpt());
+        String hostname = commandLine.getOptionValue(CommandLineOptions.HOST_OPTION.getOpt());
+        Properties dynamicProperties =
+                commandLine.getOptionProperties(
+                        CommandLineOptions.DYNAMIC_PROPERTY_OPTION.getOpt());
+        return new StandaloneJobGraphJobMasterConfiguration(
+                flinkConfDir,
+                dynamicProperties,
+                commandLine.getArgs(),
+                hostname,
+                this.getRestPort(commandLine),
+                jobGraphFile);
+    }
+
+    private int getRestPort(CommandLine commandLine) throws FlinkParseException {
+        String restPortString =
+                commandLine.getOptionValue(CommandLineOptions.REST_PORT_OPTION.getOpt(), "-1");
+        try {
+            return Integer.parseInt(restPortString);
+        } catch (NumberFormatException exp) {
+            throw new FlinkParseException(
+                    String.format(
+                            "Failed to parse '--%s' option",
+                            CommandLineOptions.REST_PORT_OPTION.getLongOpt()),
+                    exp);
+        }
     }
 }

@@ -72,6 +72,7 @@ import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nonnull;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.io.ByteArrayInputStream;
@@ -89,9 +90,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Entry point for the single jobMaster. */
-public class JobMasterEntrypoint implements FatalErrorHandler {
+public class StandaloneJobMasterEntrypoint implements FatalErrorHandler {
 
-    protected static final Logger LOG = LoggerFactory.getLogger(JobMasterEntrypoint.class);
+    protected static final Logger LOG =
+            LoggerFactory.getLogger(StandaloneJobMasterEntrypoint.class);
 
     protected static final int STARTUP_FAILURE_RETURN_CODE = 1;
     protected static final int RUNTIME_FAILURE_RETURN_CODE = 2;
@@ -108,6 +110,8 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
 
     @GuardedBy("lock")
     private JobGraph jobGraph;
+
+    @Nonnull private final String jobGraphFile;
 
     @GuardedBy("lock")
     private HighAvailabilityServices haServices;
@@ -138,22 +142,27 @@ public class JobMasterEntrypoint implements FatalErrorHandler {
     @GuardedBy("lock")
     private MetricRegistryImpl metricRegistry;
 
-    public JobMasterEntrypoint(Configuration configuration) {
+    public StandaloneJobMasterEntrypoint(Configuration configuration, String jobGraphFile) {
         this.configuration = configuration;
+        this.jobGraphFile = Preconditions.checkNotNull(jobGraphFile);
     }
 
     public static void main(String[] args) {
         EnvironmentInformation.logEnvironmentInfo(
-                LOG, JobMasterEntrypoint.class.getSimpleName(), args);
+                LOG, StandaloneJobMasterEntrypoint.class.getSimpleName(), args);
         SignalHandler.register(LOG);
         JvmShutdownSafeguard.installAsShutdownHook(LOG);
-        Configuration config =
+        StandaloneJobGraphJobMasterConfiguration standaloneJobGraphJobMasterConfiguration =
                 ClusterEntrypointUtils.parseParametersOrExit(
                         args,
                         new EntrypointJobMasterConfigurationParserFactory(),
-                        JobMasterEntrypoint.class);
-        JobMasterEntrypoint jobMasterEntrypoint = new JobMasterEntrypoint(config);
-        jobMasterEntrypoint.runJobMaster();
+                        StandaloneJobMasterEntrypoint.class);
+        Configuration configuration =
+                ClusterEntrypoint.loadConfiguration(standaloneJobGraphJobMasterConfiguration);
+        StandaloneJobMasterEntrypoint standaloneJobMasterEntrypoint =
+                new StandaloneJobMasterEntrypoint(
+                        configuration, standaloneJobGraphJobMasterConfiguration.getJobGraphFile());
+        standaloneJobMasterEntrypoint.runJobMaster();
     }
 
     private void runJobMaster() {
