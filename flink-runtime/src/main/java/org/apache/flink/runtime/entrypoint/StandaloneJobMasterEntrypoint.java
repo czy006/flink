@@ -33,6 +33,7 @@ import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.dispatcher.JobManagerRunnerFactory;
 import org.apache.flink.runtime.dispatcher.JobMasterServiceLeadershipRunnerFactory;
+import org.apache.flink.runtime.entrypoint.component.FileJobGraphRetriever;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -65,6 +66,7 @@ import org.apache.flink.runtime.util.Hardware;
 import org.apache.flink.runtime.util.JvmShutdownSafeguard;
 import org.apache.flink.runtime.util.SignalHandler;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.FlinkUserCodeClassLoaders;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
@@ -75,10 +77,8 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.GuardedBy;
 
-import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Callable;
@@ -193,19 +193,30 @@ public class StandaloneJobMasterEntrypoint implements FatalErrorHandler {
         }
     }
 
-    private void initializeJobGraph(JobID jobID, String blobKey)
-            throws Exception, ClassNotFoundException {
-        BlobKey blobKeyFromString = BlobUtils.getBlobKeyFromString(blobKey);
-        this.jobGraph = this.readJobGraph(jobID, (PermanentBlobKey) blobKeyFromString);
+    /**
+     * Download JobGraph From Blob Server To Template File Path
+     *
+     * @param jobID
+     * @param retrieverJobGraphPath
+     * @throws Exception
+     */
+    private void initializeJobGraph(JobID jobID, String retrieverJobGraphPath) throws Exception {
+        BlobKey blobKeyFromString = BlobUtils.getBlobKeyFromString(retrieverJobGraphPath);
+        File jobGraphFile = blobSharedClient.getFile(jobID, (PermanentBlobKey) blobKeyFromString);
+        this.jobGraph = this.readJobGraph(jobGraphFile);
     }
 
-    private JobGraph readJobGraph(JobID jobId, PermanentBlobKey permanentBlobKey)
-            throws IOException, ClassNotFoundException {
-        byte[] bytes = blobSharedClient.readFile(jobId, permanentBlobKey);
-        InputStream in = new ByteArrayInputStream(bytes);
-        ObjectInputStream objIn = new ObjectInputStream(in);
-        Object obj = objIn.readObject();
-        return (JobGraph) obj;
+    /**
+     * read JobGraph From Template File Path
+     *
+     * @return
+     * @throws IOException
+     * @throws FlinkException
+     */
+    private JobGraph readJobGraph(File retrieverJobGraphFile) throws IOException, FlinkException {
+        FileJobGraphRetriever jobGraphRetriever =
+                new FileJobGraphRetriever(this.jobGraphFile, retrieverJobGraphFile);
+        return jobGraphRetriever.retrieveJobGraph(configuration);
     }
 
     protected void initializeServices(Configuration configuration, PluginManager pluginManager)
@@ -388,7 +399,7 @@ public class StandaloneJobMasterEntrypoint implements FatalErrorHandler {
         LOG.info("Initializing single jobMaster services.");
 
         synchronized (lock) {
-            // TODO initializeJobGraph();
+            // TODO get JobGraph initializeJobGraph() include JobId Or Path
             initializeServices(configuration, pluginManager);
             // write host information into configuration
             configuration.setString(JobManagerOptions.ADDRESS, rpcService.getAddress());

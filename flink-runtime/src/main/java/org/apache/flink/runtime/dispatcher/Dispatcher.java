@@ -610,7 +610,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
         List<String> command = new ArrayList<>();
         String dir = System.getenv(ConfigConstants.ENV_FLINK_CONF_DIR);
         log.info("createSingleJobMasterProcessRunner Dir:" + dir);
-        Runtime.getRuntime().exec("./" + dir + "/jobmaster.sh" + "-D");
+        Runtime.getRuntime()
+                .exec(new String[] {"/bin/sh", "-c", dir + "jobmaster.sh", "start", "-D"});
     }
 
     private JobManagerRunner createJobMasterRunner(JobGraph jobGraph) throws Exception {
