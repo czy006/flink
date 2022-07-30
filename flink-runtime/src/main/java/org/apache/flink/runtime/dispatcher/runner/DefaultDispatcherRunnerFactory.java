@@ -68,6 +68,12 @@ public class DefaultDispatcherRunnerFactory implements DispatcherRunnerFactory {
                 SessionDispatcherLeaderProcessFactoryFactory.create(dispatcherFactory));
     }
 
+    public static DefaultDispatcherRunnerFactory createJobMasterSessionRunner(
+            DispatcherFactory dispatcherFactory) {
+        return new DefaultDispatcherRunnerFactory(
+                SessionJobMasterDispatcherLeaderProcessFactoryFactory.create(dispatcherFactory));
+    }
+
     public static DefaultDispatcherRunnerFactory createJobRunner(
             JobGraphRetriever jobGraphRetriever) {
         return new DefaultDispatcherRunnerFactory(

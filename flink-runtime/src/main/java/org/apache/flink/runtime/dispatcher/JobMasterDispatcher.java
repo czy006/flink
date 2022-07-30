@@ -27,10 +27,13 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ClusterOptions;
+import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.Checkpoints;
 import org.apache.flink.runtime.client.DuplicateJobSubmissionException;
@@ -92,6 +95,9 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -115,10 +121,10 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * job submissions, persisting them, spawning JobManagers to execute the jobs and to recover them in
  * case of a master failure. Furthermore, it knows about the state of the Flink session cluster.
  */
-public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
+public abstract class JobMasterDispatcher extends FencedRpcEndpoint<DispatcherId>
         implements DispatcherGateway {
 
-    public static final String DISPATCHER_NAME = "dispatcher";
+    public static final String DISPATCHER_NAME = "jobmaster-dispatcher";
 
     private static final int INITIAL_JOB_MANAGER_RUNNER_REGISTRY_CAPACITY = 16;
 
@@ -135,7 +141,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
 
     private final FatalErrorHandler fatalErrorHandler;
 
-    private final OnMainThreadJobManagerRunnerRegistry jobManagerRunnerRegistry;
+    private final JobManagerRunnerRegistry jobManagerRunnerRegistry;
 
     private final Collection<JobGraph> recoveredJobs;
 
@@ -167,13 +173,15 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
     private final ResourceCleaner localResourceCleaner;
     private final ResourceCleaner globalResourceCleaner;
 
+
+
     /** Enum to distinguish between initial job submission and re-submission for recovery. */
     protected enum ExecutionType {
         SUBMISSION,
         RECOVERY
     }
 
-    public Dispatcher(
+    public JobMasterDispatcher(
             RpcService rpcService,
             DispatcherId fencingToken,
             Collection<JobGraph> recoveredJobs,
@@ -191,7 +199,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                 new DefaultJobManagerRunnerRegistry(INITIAL_JOB_MANAGER_RUNNER_REGISTRY_CAPACITY));
     }
 
-    private Dispatcher(
+    private JobMasterDispatcher(
             RpcService rpcService,
             DispatcherId fencingToken,
             Collection<JobGraph> recoveredJobs,
@@ -212,7 +220,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
     }
 
     @VisibleForTesting
-    protected Dispatcher(
+    protected JobMasterDispatcher(
             RpcService rpcService,
             DispatcherId fencingToken,
             Collection<JobGraph> recoveredJobs,
@@ -241,10 +249,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
         this.jobManagerSharedServices =
                 JobManagerSharedServices.fromConfiguration(
                         configuration, blobServer, fatalErrorHandler);
-
-        this.jobManagerRunnerRegistry =
-                new OnMainThreadJobManagerRunnerRegistry(
-                        jobManagerRunnerRegistry, this.getMainThreadExecutor());
+        //change it
+        this.jobManagerRunnerRegistry = jobManagerRunnerRegistry;
 
         this.historyServerArchivist = dispatcherServices.getHistoryServerArchivist();
 
@@ -565,9 +571,55 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
 
     private void persistAndRunJob(JobGraph jobGraph) throws Exception {
         jobGraphWriter.putJobGraph(jobGraph);
-        runJob(createJobMasterRunner(jobGraph), ExecutionType.SUBMISSION);
+        if (configuration.getBoolean(
+                JobManagerOptions.JOB_MANAGER_JOB_MASTER_SINGLE_PROCESS_ENABLE)) {
+            try {
+                final java.nio.file.Path jobGraphFile =
+                        Files.createTempFile(
+                                "flink-jobgraph-" + jobGraph.getJobID().toString(), ".bin");
+                ObjectOutputStream objectOut =
+                        new ObjectOutputStream(Files.newOutputStream(jobGraphFile));
+                objectOut.writeObject(jobGraph);
+                ObjectInputStream inputStream =
+                        new ObjectInputStream(Files.newInputStream(jobGraphFile.toFile().toPath()));
+                BlobKey permanentBlobKey =
+                        blobServer.putPermanent(jobGraph.getJobID(), inputStream);
+                String jobGraphBlobPath = permanentBlobKey.toString();
+                log.info(
+                        "flink-jobgraph-"
+                                + jobGraph.getJobID().toString()
+                                + "is save in blob,blob "
+                                + "key "
+                                + jobGraphBlobPath);
+                createSingleJobMasterProcessRunner(jobGraphBlobPath);
+            } catch (IOException e) {
+                throw new CompletionException(
+                        new FlinkException("Failed to serialize JobGraph.", e));
+            }
+        } else {
+            runJob(createJobMasterRunner(jobGraph), ExecutionType.SUBMISSION);
+        }
     }
 
+    /**
+     * Start Single JobMaster Run it
+     *
+     * @param jobGraphBlobPath
+     */
+    private void createSingleJobMasterProcessRunner(String jobGraphBlobPath) throws IOException {
+        List<String> command = new ArrayList<>();
+        String dir = System.getenv(ConfigConstants.ENV_FLINK_CONF_DIR);
+        log.info("createSingleJobMasterProcessRunner Dir:" + dir);
+        Runtime.getRuntime()
+                .exec(new String[] {"/bin/sh", "-c", dir + "jobmaster.sh", "start", "-D"});
+    }
+
+    /**
+     * TODO 使用Gateway提交作业到远端
+     * @param jobGraph
+     * @return
+     * @throws Exception
+     */
     private JobManagerRunner createJobMasterRunner(JobGraph jobGraph) throws Exception {
         Preconditions.checkState(!jobManagerRunnerRegistry.isRegistered(jobGraph.getJobID()));
         return jobManagerRunnerFactory.createJobManagerRunner(
@@ -593,7 +645,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
 
     private void runJob(JobManagerRunner jobManagerRunner, ExecutionType executionType)
             throws Exception {
-        jobManagerRunner.start();
+
         jobManagerRunnerRegistry.register(jobManagerRunner);
 
         final JobID jobId = jobManagerRunner.getJobID();
@@ -1303,7 +1355,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                 // metrics can be called from anywhere and therefore, have to run without the main
                 // thread safeguard being triggered. For metrics, we can afford to be not 100%
                 // accurate
-                () -> (long) jobManagerRunnerRegistry.getWrappedDelegate().size());
+                () -> (long) jobManagerRunnerRegistry.size());
     }
 
     public CompletableFuture<Void> onRemovedJobGraph(JobID jobId) {

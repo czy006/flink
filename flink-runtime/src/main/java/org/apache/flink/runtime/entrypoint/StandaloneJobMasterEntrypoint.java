@@ -31,8 +31,10 @@ import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.blob.BlobSharedClient;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.dispatcher.JobManagerRunnerFactory;
 import org.apache.flink.runtime.dispatcher.JobMasterServiceLeadershipRunnerFactory;
+import org.apache.flink.runtime.dispatcher.OnMainThreadJobManagerRunnerRegistry;
 import org.apache.flink.runtime.entrypoint.component.FileJobGraphRetriever;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
@@ -87,6 +89,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Entry point for the single jobMaster. */
@@ -141,6 +145,10 @@ public class StandaloneJobMasterEntrypoint implements FatalErrorHandler {
 
     @GuardedBy("lock")
     private MetricRegistryImpl metricRegistry;
+
+
+
+
 
     public StandaloneJobMasterEntrypoint(Configuration configuration, String jobGraphFile) {
         this.configuration = configuration;
@@ -277,7 +285,9 @@ public class StandaloneJobMasterEntrypoint implements FatalErrorHandler {
         this.jobManagerMetricGroup =
                 JobManagerMetricGroup.createJobManagerMetricGroup(metricRegistry, hostname);
 
+        // 创建一个容器收集所有的JobManagerRunner
         this.jobManagerRunner = createJobManagerRunner();
+
     }
 
     protected MetricRegistryImpl createMetricRegistry(
@@ -399,7 +409,6 @@ public class StandaloneJobMasterEntrypoint implements FatalErrorHandler {
         LOG.info("Initializing single jobMaster services.");
 
         synchronized (lock) {
-            // TODO get JobGraph initializeJobGraph() include JobId Or Path
             initializeServices(configuration, pluginManager);
             // write host information into configuration
             configuration.setString(JobManagerOptions.ADDRESS, rpcService.getAddress());

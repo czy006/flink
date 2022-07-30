@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.dispatcher.cleanup.CleanupRunnerFactory;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
@@ -64,7 +65,7 @@ public class DispatcherServices {
 
     private final JobResultStore jobResultStore;
 
-    private final JobManagerRunnerFactory jobManagerRunnerFactory;
+    @Nullable private final JobManagerRunnerFactory jobManagerRunnerFactory;
 
     private final CleanupRunnerFactory cleanupRunnerFactory;
 
@@ -84,7 +85,7 @@ public class DispatcherServices {
             JobManagerMetricGroup jobManagerMetricGroup,
             JobGraphWriter jobGraphWriter,
             JobResultStore jobResultStore,
-            JobManagerRunnerFactory jobManagerRunnerFactory,
+            @Nullable JobManagerRunnerFactory jobManagerRunnerFactory,
             CleanupRunnerFactory cleanupRunnerFactory,
             Executor ioExecutor) {
         this.configuration = Preconditions.checkNotNull(configuration, "Configuration");
@@ -106,8 +107,13 @@ public class DispatcherServices {
                 Preconditions.checkNotNull(jobManagerMetricGroup, "JobManagerMetricGroup");
         this.jobGraphWriter = Preconditions.checkNotNull(jobGraphWriter, "JobGraphWriter");
         this.jobResultStore = Preconditions.checkNotNull(jobResultStore, "JobResultStore");
-        this.jobManagerRunnerFactory =
-                Preconditions.checkNotNull(jobManagerRunnerFactory, "JobManagerRunnerFactory");
+        // jobManagerRunnerFactory check
+        if (configuration.getBoolean(JobManagerOptions.JOB_MANAGER_JOB_MASTER_SINGLE_PROCESS_ENABLE)){
+            this.jobManagerRunnerFactory = jobManagerRunnerFactory;
+        } else {
+            this.jobManagerRunnerFactory =
+                    Preconditions.checkNotNull(jobManagerRunnerFactory, "JobManagerRunnerFactory");
+        }
         this.cleanupRunnerFactory =
                 Preconditions.checkNotNull(cleanupRunnerFactory, "CleanupRunnerFactory");
         this.ioExecutor = Preconditions.checkNotNull(ioExecutor, "IOExecutor");

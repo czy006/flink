@@ -51,4 +51,25 @@ public enum SessionDispatcherFactory implements DispatcherFactory {
                         JobMasterServiceLeadershipRunnerFactory.INSTANCE,
                         CheckpointResourcesCleanupRunnerFactory.INSTANCE));
     }
+
+    @Override
+    public JobMasterDispatcher createJobMasterDispatcher(
+            RpcService rpcService,
+            DispatcherId fencingToken,
+            Collection<JobGraph> recoveredJobs,
+            Collection<JobResult> recoveredDirtyJobResults,
+            DispatcherBootstrapFactory dispatcherBootstrapFactory,
+            PartialDispatcherServicesWithJobPersistenceComponents partialDispatcherServicesWithJobPersistenceComponents) throws Exception {
+        // create the jobMaster dispatcher
+        return new StandaloneJobMasterDispatcher(
+                rpcService,
+                fencingToken,
+                recoveredJobs,
+                recoveredDirtyJobResults,
+                dispatcherBootstrapFactory,
+                DispatcherServices.from(
+                        partialDispatcherServicesWithJobPersistenceComponents,
+                        null,
+                        CheckpointResourcesCleanupRunnerFactory.INSTANCE));
+    }
 }
