@@ -60,7 +60,7 @@ public enum SessionDispatcherFactory implements DispatcherFactory {
             Collection<JobResult> recoveredDirtyJobResults,
             DispatcherBootstrapFactory dispatcherBootstrapFactory,
             PartialDispatcherServicesWithJobPersistenceComponents partialDispatcherServicesWithJobPersistenceComponents) throws Exception {
-        // create the jobMaster dispatcher
+        // create the jobMaster dispatcher, not create JobMasterServiceLeadershipRunnerFactory
         return new StandaloneJobMasterDispatcher(
                 rpcService,
                 fencingToken,

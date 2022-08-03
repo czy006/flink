@@ -299,6 +299,20 @@ public class DefaultDispatcherResourceManagerComponentFactory
                 SessionRestEndpointFactory.INSTANCE);
     }
 
+    /**
+     * JobMaster
+     * @param resourceManagerFactory
+     * @return
+     */
+    public static DefaultDispatcherResourceManagerComponentFactory createJobMasterSessionComponentFactory(
+            ResourceManagerFactory<?> resourceManagerFactory) {
+        return new DefaultDispatcherResourceManagerComponentFactory(
+                DefaultDispatcherRunnerFactory.createJobMasterSessionRunner(
+                        SessionDispatcherFactory.INSTANCE),
+                resourceManagerFactory,
+                SessionRestEndpointFactory.INSTANCE);
+    }
+
     public static DefaultDispatcherResourceManagerComponentFactory createJobComponentFactory(
             ResourceManagerFactory<?> resourceManagerFactory, JobGraphRetriever jobGraphRetriever) {
         return new DefaultDispatcherResourceManagerComponentFactory(
