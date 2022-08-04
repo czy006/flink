@@ -285,7 +285,7 @@ public class StandaloneJobMasterEntrypoint implements FatalErrorHandler {
         this.jobManagerMetricGroup =
                 JobManagerMetricGroup.createJobManagerMetricGroup(metricRegistry, hostname);
 
-        // 创建一个容器收集所有的JobManagerRunner
+        //TODO  创建一个容器收集所有的JobMasterDispatcher
         this.jobManagerRunner = createJobManagerRunner();
 
     }
