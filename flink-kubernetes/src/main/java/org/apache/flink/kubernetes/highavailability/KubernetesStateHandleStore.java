@@ -219,6 +219,9 @@ public class KubernetesStateHandleStore<T extends Serializable>
                     !updateConfigMap(
                                     cm -> {
                                         try {
+                                            KubernetesStateHandleStoreUtilInternal
+                                                    .trySetAdditionalProperties(
+                                                            key, state, cm.getData());
                                             return addEntry(cm, key, serializedStoreHandle);
                                         } catch (Exception e) {
                                             throw new CompletionException(e);
@@ -489,6 +492,9 @@ public class KubernetesStateHandleStore<T extends Serializable>
                                                 .put(
                                                         key,
                                                         serializeStateHandle(result.toDeleting()));
+                                        KubernetesStateHandleStoreUtilInternal
+                                                .tryRemoveAdditionalProperties(
+                                                        key, configMap.getData());
                                     }
                                     stateHandleRefer.set(result.getInner());
                                 } catch (IOException e) {

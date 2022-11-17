@@ -27,6 +27,7 @@ import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
 import org.apache.flink.kubernetes.highavailability.KubernetesCheckpointStoreUtil;
 import org.apache.flink.kubernetes.highavailability.KubernetesJobGraphStoreUtil;
 import org.apache.flink.kubernetes.highavailability.KubernetesStateHandleStore;
+import org.apache.flink.kubernetes.highavailability.KubernetesStateHandleStoreUtilInternal;
 import org.apache.flink.kubernetes.kubeclient.FlinkKubeClient;
 import org.apache.flink.kubernetes.kubeclient.FlinkPod;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesConfigMap;
@@ -291,7 +292,11 @@ public class KubernetesUtils {
                 flinkKubeClient,
                 configMapName,
                 stateStorage,
-                k -> k.startsWith(JOB_GRAPH_STORE_KEY_PREFIX),
+                k ->
+                        k.startsWith(JOB_GRAPH_STORE_KEY_PREFIX)
+                                && !k.endsWith(
+                                        KubernetesStateHandleStoreUtilInternal
+                                                .ADDITIONAL_PROPERTIES_SUFFIX),
                 lockIdentity);
     }
 
@@ -331,7 +336,11 @@ public class KubernetesUtils {
                         kubeClient,
                         configMapName,
                         stateStorage,
-                        k -> k.startsWith(CHECKPOINT_ID_KEY_PREFIX),
+                        k ->
+                                k.startsWith(CHECKPOINT_ID_KEY_PREFIX)
+                                        && !k.endsWith(
+                                                KubernetesStateHandleStoreUtilInternal
+                                                        .ADDITIONAL_PROPERTIES_SUFFIX),
                         lockIdentity);
         Collection<CompletedCheckpoint> checkpoints =
                 DefaultCompletedCheckpointStoreUtils.retrieveCompletedCheckpoints(

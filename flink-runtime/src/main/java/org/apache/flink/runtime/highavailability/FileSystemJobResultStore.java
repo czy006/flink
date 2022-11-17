@@ -25,6 +25,7 @@ import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.checkpoint.Snapshot;
 import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.rest.messages.json.JobResultDeserializer;
 import org.apache.flink.runtime.rest.messages.json.JobResultSerializer;
@@ -226,16 +227,19 @@ public class FileSystemJobResultStore extends AbstractThreadsafeJobResultStore {
         private static final String FIELD_NAME_RESULT = "result";
         static final String FIELD_NAME_VERSION = "version";
 
+        private static final String FIELD_NAME_LATEST_CHECKPOINT = "latestCheckpoint";
+
         private JsonJobResultEntry(JobResultEntry entry) {
-            this(entry.getJobResult());
+            this(entry.getJobResult(), entry.getLatestCheckpoint());
         }
 
         @JsonCreator
-        private JsonJobResultEntry(@JsonProperty(FIELD_NAME_RESULT) JobResult jobResult) {
-            super(jobResult);
+        private JsonJobResultEntry(
+                @JsonProperty(FIELD_NAME_RESULT) JobResult jobResult,
+                @JsonProperty(FIELD_NAME_LATEST_CHECKPOINT) Snapshot latestCheckpoint) {
+            super(jobResult, latestCheckpoint);
         }
 
-        @Override
         @JsonProperty(FIELD_NAME_RESULT)
         @JsonSerialize(using = JobResultSerializer.class)
         @JsonDeserialize(using = JobResultDeserializer.class)
@@ -243,8 +247,12 @@ public class FileSystemJobResultStore extends AbstractThreadsafeJobResultStore {
             return super.getJobResult();
         }
 
+        @JsonProperty(FIELD_NAME_LATEST_CHECKPOINT)
+        public Snapshot getLatestCheckpoint() {
+            return super.getLatestCheckpoint();
+        }
+
         @JsonIgnore
-        @Override
         public JobID getJobId() {
             return super.getJobId();
         }

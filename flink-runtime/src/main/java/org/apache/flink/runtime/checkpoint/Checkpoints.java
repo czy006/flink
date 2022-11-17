@@ -379,4 +379,31 @@ public class Checkpoints {
 
     /** This class contains only static utility methods and is not meant to be instantiated. */
     private Checkpoints() {}
+
+    private static class ClaimModeCompletedStorageLocation
+            implements CompletedCheckpointStorageLocation {
+        private final CompletedCheckpointStorageLocation wrapped;
+
+        private ClaimModeCompletedStorageLocation(CompletedCheckpointStorageLocation location) {
+            this.wrapped = location;
+        }
+
+        public String getExternalPointer() {
+            return this.wrapped.getExternalPointer();
+        }
+
+        public StreamStateHandle getMetadataHandle() {
+            return this.wrapped.getMetadataHandle();
+        }
+
+        public void disposeStorageLocation() throws IOException {
+            try {
+                this.wrapped.disposeStorageLocation();
+            } catch (Exception var2) {
+                Checkpoints.LOG.debug(
+                        "We could not delete the storage location: {} in CLAIM restore mode. It is most probably because of shared files still being used by newer checkpoints",
+                        this.wrapped);
+            }
+        }
+    }
 }

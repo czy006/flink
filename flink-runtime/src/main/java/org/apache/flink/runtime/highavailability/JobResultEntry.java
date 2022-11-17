@@ -19,8 +19,11 @@
 package org.apache.flink.runtime.highavailability;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.checkpoint.Snapshot;
 import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.util.Preconditions;
+
+import javax.annotation.Nullable;
 
 /**
  * {@code JobResultEntry} is the entity managed by the {@link JobResultStore}. It collects
@@ -30,8 +33,15 @@ public class JobResultEntry {
 
     private final JobResult jobResult;
 
+    @Nullable private Snapshot latestCheckpoint;
+
     public JobResultEntry(JobResult jobResult) {
+        this(jobResult, null);
+    }
+
+    public JobResultEntry(JobResult jobResult, @Nullable Snapshot latestCheckpoint) {
         this.jobResult = Preconditions.checkNotNull(jobResult);
+        this.latestCheckpoint = latestCheckpoint;
     }
 
     public JobResult getJobResult() {
@@ -40,5 +50,9 @@ public class JobResultEntry {
 
     public JobID getJobId() {
         return jobResult.getJobId();
+    }
+
+    public Snapshot getLatestCheckpoint() {
+        return this.latestCheckpoint;
     }
 }

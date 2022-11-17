@@ -37,7 +37,10 @@ import org.apache.flink.core.execution.CheckpointType;
 import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.checkpoint.CheckpointStatsHistory;
+import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
 import org.apache.flink.runtime.checkpoint.Checkpoints;
+import org.apache.flink.runtime.checkpoint.Snapshot;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.client.DuplicateJobSubmissionException;
 import org.apache.flink.runtime.client.JobSubmissionException;
@@ -103,6 +106,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -117,6 +121,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -1281,9 +1286,12 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                                     "Job {} is already marked as clean but clean up was triggered again.",
                                     jobId);
                         } else if (!jobResultStore.hasDirtyJobResultEntry(jobId)) {
-                            jobResultStore.createDirtyResult(
+                            JobResult jobResult = JobResult.createFrom(archivedExecutionGraph);
+                            Optional<Snapshot> latestCheckpointOptional =
+                                    this.extractLatestCheckpoint(archivedExecutionGraph);
+                            this.jobResultStore.createDirtyResult(
                                     new JobResultEntry(
-                                            JobResult.createFrom(archivedExecutionGraph)));
+                                            jobResult, latestCheckpointOptional.orElse(null)));
                             log.info(
                                     "Job {} has been registered for cleanup in the JobResultStore after reaching a terminal state.",
                                     jobId);
@@ -1308,6 +1316,25 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                     return CleanupJobState.globalCleanup(terminalJobStatus);
                 },
                 getMainThreadExecutor());
+    }
+
+    private Optional<Snapshot> extractLatestCheckpoint(
+            ArchivedExecutionGraph archivedExecutionGraph) {
+        Optional<CheckpointStatsSnapshot> checkpointStatsSnapshotOptional =
+                Optional.ofNullable(archivedExecutionGraph.getCheckpointStatsSnapshot());
+        Optional<Snapshot> restoredCheckpointOptional =
+                checkpointStatsSnapshotOptional
+                        .map(CheckpointStatsSnapshot::getLatestRestoredCheckpoint)
+                        .map(Snapshot::fromRestoredCheckpoint);
+        Optional<Snapshot> latestCompletedCheckpointOptional =
+                checkpointStatsSnapshotOptional
+                        .map(CheckpointStatsSnapshot::getHistory)
+                        .map(CheckpointStatsHistory::getLatestCompletedCheckpoint)
+                        .map(Snapshot::fromCheckpoint);
+        return Stream.of(latestCompletedCheckpointOptional, restoredCheckpointOptional)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .max(Comparator.comparing(Snapshot::getCheckpointId));
     }
 
     private void writeToExecutionGraphInfoStore(ExecutionGraphInfo executionGraphInfo) {
