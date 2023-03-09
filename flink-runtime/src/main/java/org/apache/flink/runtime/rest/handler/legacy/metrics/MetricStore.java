@@ -443,6 +443,10 @@ public class MetricStore {
             return value != null ? value : defaultValue;
         }
 
+        public Map<String, String> getMetrics() {
+            return this.metrics;
+        }
+
         private static ComponentMetricStore unmodifiable(ComponentMetricStore source) {
             if (source == null) {
                 return null;

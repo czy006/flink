@@ -3401,6 +3401,181 @@ Using 'curl' you can upload a jar via 'curl -X POST -H "Expect:" -F "jarfile=@pa
 <table class="rest-api table table-bordered">
   <tbody>
     <tr>
+      <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/details</strong></h5></td>
+    </tr>
+    <tr>
+      <td class="text-left" style="width: 20%">Verb: <code>GET</code></td>
+      <td class="text-left">Response code: <code>200 OK</code></td>
+    </tr>
+    <tr>
+      <td colspan="2">Returns all vertecies of a job.</td>
+    </tr>
+    <tr>
+      <td colspan="2">Path parameters</td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <ul>
+<li><code>jobid</code> - 32-character hexadecimal string value that identifies a job.</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+      <div class="book-expand">
+        <label>
+          <div class="book-expand-head flex justify-between">
+            <span>Request</span>
+            &nbsp;            <span>▾</span>
+          </div>
+          <input type="checkbox" class="hidden">
+          <div class="book-expand-content markdown-inner">
+          <pre>
+            <code>
+{}            </code>
+          </pre>
+          </div>
+        </label>
+      </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+      <div class="book-expand">
+        <label>
+          <div class="book-expand-head flex justify-between">
+            <span>Response</span>
+            &nbsp;            <span>▾</span>
+          </div>
+          <input type="checkbox" class="hidden">
+          <div class="book-expand-content markdown-inner">
+          <pre>
+            <code>
+{
+  "type" : "object",
+  "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:job:JobVerticesInfo",
+  "properties" : {
+    "operators" : {
+      "type" : "array",
+      "items" : {
+        "type" : "object",
+        "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:job:JobVerticesInfo:JobOperator",
+        "properties" : {
+          "inputs" : {
+            "type" : "array",
+            "items" : {
+              "type" : "object",
+              "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:job:JobVerticesInfo:OperatorEdgeInfo",
+              "properties" : {
+                "operator_id" : {
+                  "type" : "any"
+                },
+                "partitioner" : {
+                  "type" : "string"
+                },
+                "type_number" : {
+                  "type" : "integer"
+                }
+              }
+            }
+          },
+          "metric_name" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "operator_id" : {
+            "type" : "any"
+          },
+          "vertex_id" : {
+            "type" : "any"
+          }
+        }
+      }
+    },
+    "vertices" : {
+      "type" : "array",
+      "items" : {
+        "type" : "object",
+        "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:job:JobVerticesInfo:JobVertex",
+        "properties" : {
+          "id" : {
+            "type" : "any"
+          },
+          "metrics" : {
+            "type" : "object",
+            "id" : "urn:jsonschema:org:apache:flink:runtime:rest:messages:job:metrics:IOMetricsInfo",
+            "properties" : {
+              "accumulated-backpressured-time" : {
+                "type" : "integer"
+              },
+              "accumulated-busy-time" : {
+                "type" : "number"
+              },
+              "accumulated-idle-time" : {
+                "type" : "integer"
+              },
+              "read-bytes" : {
+                "type" : "integer"
+              },
+              "read-bytes-complete" : {
+                "type" : "boolean"
+              },
+              "read-records" : {
+                "type" : "integer"
+              },
+              "read-records-complete" : {
+                "type" : "boolean"
+              },
+              "write-bytes" : {
+                "type" : "integer"
+              },
+              "write-bytes-complete" : {
+                "type" : "boolean"
+              },
+              "write-records" : {
+                "type" : "integer"
+              },
+              "write-records-complete" : {
+                "type" : "boolean"
+              }
+            }
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "parallelism" : {
+            "type" : "integer"
+          },
+          "subtask_metrics" : {
+            "type" : "array",
+            "items" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "type" : "string"
+              }
+            }
+          },
+          "topology-id" : {
+            "type" : "integer"
+          }
+        }
+      }
+    }
+  }
+}            </code>
+          </pre>
+          </div>
+        </label>
+      </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<table class="rest-api table table-bordered">
+  <tbody>
+    <tr>
       <td class="text-left" colspan="2"><h5><strong>/jobs/:jobid/vertices/:vertexid</strong></h5></td>
     </tr>
     <tr>

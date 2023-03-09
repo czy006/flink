@@ -17,6 +17,7 @@
  */
 package org.apache.flink.runtime.executiongraph;
 
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -43,6 +44,9 @@ public class ArchivedExecutionJobVertex implements AccessExecutionJobVertex, Ser
 
     private final StringifiedAccumulatorResult[] archivedUserAccumulators;
 
+    private final JobVertexID[] inputVertices;
+    private final Configuration configuration;
+
     public ArchivedExecutionJobVertex(ExecutionJobVertex jobVertex) {
         this.taskVertices = new ArchivedExecutionVertex[jobVertex.getTaskVertices().length];
         for (int x = 0; x < taskVertices.length; x++) {
@@ -56,6 +60,16 @@ public class ArchivedExecutionJobVertex implements AccessExecutionJobVertex, Ser
         this.parallelism = jobVertex.getParallelism();
         this.maxParallelism = jobVertex.getMaxParallelism();
         this.resourceProfile = jobVertex.getResourceProfile();
+        this.configuration = jobVertex.getJobVertex().getConfiguration();
+        if (this.taskVertices.length > 0) {
+            this.inputVertices =
+                    jobVertex.getInputs().stream()
+                            .map(IntermediateResult::getProducer)
+                            .map(ExecutionJobVertex::getJobVertexId)
+                            .toArray(JobVertexID[]::new);
+        } else {
+            this.inputVertices = new JobVertexID[0];
+        }
     }
 
     public ArchivedExecutionJobVertex(
@@ -65,7 +79,8 @@ public class ArchivedExecutionJobVertex implements AccessExecutionJobVertex, Ser
             int parallelism,
             int maxParallelism,
             ResourceProfile resourceProfile,
-            StringifiedAccumulatorResult[] archivedUserAccumulators) {
+            StringifiedAccumulatorResult[] archivedUserAccumulators,
+            JobVertexID[] inputVertices) {
         this.taskVertices = taskVertices;
         this.id = id;
         this.name = name;
@@ -73,6 +88,8 @@ public class ArchivedExecutionJobVertex implements AccessExecutionJobVertex, Ser
         this.maxParallelism = maxParallelism;
         this.resourceProfile = resourceProfile;
         this.archivedUserAccumulators = archivedUserAccumulators;
+        this.configuration = new Configuration();
+        this.inputVertices = inputVertices;
     }
 
     // --------------------------------------------------------------------------------------------
@@ -126,5 +143,9 @@ public class ArchivedExecutionJobVertex implements AccessExecutionJobVertex, Ser
     @Override
     public StringifiedAccumulatorResult[] getAggregatedUserAccumulatorsStringified() {
         return archivedUserAccumulators;
+    }
+
+    public Configuration getConfiguration() {
+        return this.configuration;
     }
 }

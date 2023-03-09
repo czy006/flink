@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.webmonitor.history;
 
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
+import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 
 import java.io.IOException;
@@ -43,7 +44,8 @@ public interface JsonArchivist {
      * @return Collection containing an ArchivedJson for every response that could be generated for
      *     the given job
      * @throws IOException thrown if the JSON generation fails
+     * @throws RestHandlerException rest exception
      */
     Collection<ArchivedJson> archiveJsonWithPath(ExecutionGraphInfo executionGraphInfo)
-            throws IOException;
+            throws IOException, RestHandlerException;
 }

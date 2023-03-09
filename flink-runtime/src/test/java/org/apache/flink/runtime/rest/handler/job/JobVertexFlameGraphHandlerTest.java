@@ -105,7 +105,8 @@ public class JobVertexFlameGraphHandlerTest extends TestLogger {
                         2,
                         2,
                         ResourceProfile.UNKNOWN,
-                        new StringifiedAccumulatorResult[0]);
+                        new StringifiedAccumulatorResult[0],
+                        new JobVertexID[]{});
 
         // Check the finished subtask
         HandlerRequest<EmptyRequestBody> request = generateJobVertexFlameGraphParameters(0);
@@ -141,7 +142,8 @@ public class JobVertexFlameGraphHandlerTest extends TestLogger {
                         2,
                         2,
                         ResourceProfile.UNKNOWN,
-                        new StringifiedAccumulatorResult[0]);
+                        new StringifiedAccumulatorResult[0],
+                        new JobVertexID[]{});
 
         HandlerRequest<EmptyRequestBody> request = generateJobVertexFlameGraphParameters(null);
         VertexFlameGraph jobVertexFlameGraph =

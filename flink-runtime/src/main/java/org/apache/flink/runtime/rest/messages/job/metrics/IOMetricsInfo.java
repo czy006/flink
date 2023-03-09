@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.rest.messages.job.metrics;
 
+import org.apache.flink.runtime.rest.handler.util.MutableIOMetrics;
+
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -105,6 +107,20 @@ public final class IOMetricsInfo {
         this.accumulatedBackpressured = accumulatedBackpressured;
         this.accumulatedIdle = accumulatedIdle;
         this.accumulatedBusy = accumulatedBusy;
+    }
+
+    public IOMetricsInfo(MutableIOMetrics counts) {
+        this.bytesRead = counts.getNumBytesIn();
+        this.bytesReadComplete = counts.isNumBytesInComplete();
+        this.bytesWritten = counts.getNumBytesOut();
+        this.bytesWrittenComplete = counts.isNumBytesOutComplete();
+        this.recordsRead = counts.getNumRecordsIn();
+        this.recordsReadComplete = counts.isNumRecordsInComplete();
+        this.recordsWritten = counts.getNumRecordsOut();
+        this.recordsWrittenComplete = counts.isNumRecordsOutComplete();
+        this.accumulatedBackpressured = counts.getAccumulateBackPressuredTime();
+        this.accumulatedIdle = counts.getAccumulateIdleTime();
+        this.accumulatedBusy = counts.getAccumulateBusyTime();
     }
 
     public long getBytesRead() {

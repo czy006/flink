@@ -31,6 +31,7 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.rest.RestServerEndpoint;
 import org.apache.flink.runtime.rest.handler.AbstractRestHandler;
 import org.apache.flink.runtime.rest.handler.RestHandlerConfiguration;
+import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.rest.handler.RestHandlerSpecification;
 import org.apache.flink.runtime.rest.handler.cluster.ClusterConfigHandler;
 import org.apache.flink.runtime.rest.handler.cluster.ClusterOverviewHandler;
@@ -61,6 +62,7 @@ import org.apache.flink.runtime.rest.handler.job.JobVertexBackPressureHandler;
 import org.apache.flink.runtime.rest.handler.job.JobVertexDetailsHandler;
 import org.apache.flink.runtime.rest.handler.job.JobVertexFlameGraphHandler;
 import org.apache.flink.runtime.rest.handler.job.JobVertexTaskManagersHandler;
+import org.apache.flink.runtime.rest.handler.job.JobVerticesInfoHandler;
 import org.apache.flink.runtime.rest.handler.job.JobsOverviewHandler;
 import org.apache.flink.runtime.rest.handler.job.SubtaskCurrentAttemptDetailsHandler;
 import org.apache.flink.runtime.rest.handler.job.SubtaskExecutionAttemptAccumulatorsHandler;
@@ -134,6 +136,7 @@ import org.apache.flink.runtime.rest.messages.job.JobDetailsHeaders;
 import org.apache.flink.runtime.rest.messages.job.JobManagerJobConfigurationHeaders;
 import org.apache.flink.runtime.rest.messages.job.JobManagerJobEnvironmentHeaders;
 import org.apache.flink.runtime.rest.messages.job.JobStatusInfoHeaders;
+import org.apache.flink.runtime.rest.messages.job.JobVerticesHeaders;
 import org.apache.flink.runtime.rest.messages.job.SubtaskCurrentAttemptDetailsHeaders;
 import org.apache.flink.runtime.rest.messages.job.SubtaskExecutionAttemptAccumulatorsHeaders;
 import org.apache.flink.runtime.rest.messages.job.SubtaskExecutionAttemptDetailsHeaders;
@@ -528,6 +531,16 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
                         executor,
                         metricFetcher);
 
+        JobVerticesInfoHandler jobVerticesInfoHandler =
+                new JobVerticesInfoHandler(
+                        this.leaderRetriever,
+                        timeout,
+                        this.responseHeaders,
+                        JobVerticesHeaders.getInstance(),
+                        this.executionGraphCache,
+                        this.executor,
+                        this.metricFetcher);
+
         final JobExecutionResultHandler jobExecutionResultHandler =
                 new JobExecutionResultHandler(leaderRetriever, timeout, responseHeaders);
 
@@ -814,6 +827,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
                 Tuple2.of(
                         jobVertexTaskManagersHandler.getMessageHeaders(),
                         jobVertexTaskManagersHandler));
+        handlers.add(Tuple2.of(jobVerticesInfoHandler.getMessageHeaders(), jobVerticesInfoHandler));
         handlers.add(
                 Tuple2.of(
                         jobVertexBackPressureHandler.getMessageHeaders(),
@@ -1113,7 +1127,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
 
     @Override
     public Collection<ArchivedJson> archiveJsonWithPath(ExecutionGraphInfo executionGraphInfo)
-            throws IOException {
+            throws IOException, RestHandlerException {
         Collection<ArchivedJson> archivedJson = new ArrayList<>(archivingHandlers.size());
         for (JsonArchivist archivist : archivingHandlers) {
             Collection<ArchivedJson> subArchive = archivist.archiveJsonWithPath(executionGraphInfo);

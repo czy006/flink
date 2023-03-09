@@ -117,7 +117,8 @@ public class SubtaskExecutionAttemptDetailsHandlerTest extends TestLogger {
                         1,
                         1,
                         ResourceProfile.UNKNOWN,
-                        emptyAccumulators);
+                        emptyAccumulators,
+                        new JobVertexID[1]);
 
         // Change some fields so we can make it different from other sub tasks.
         final MetricFetcher metricFetcher =

@@ -17,6 +17,7 @@
  */
 package org.apache.flink.runtime.executiongraph;
 
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -82,4 +83,8 @@ public interface AccessExecutionJobVertex {
      * @return aggregated user-defined accumulators as strings.
      */
     StringifiedAccumulatorResult[] getAggregatedUserAccumulatorsStringified();
+
+    default Configuration getConfiguration() {
+        throw new UnsupportedOperationException("NOT SUPPORTED.");
+    }
 }

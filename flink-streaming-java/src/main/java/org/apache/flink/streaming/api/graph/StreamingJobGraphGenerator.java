@@ -279,7 +279,14 @@ public class StreamingJobGraphGenerator {
                 Collections.unmodifiableMap(chainedConfigs),
                 id -> streamGraph.getStreamNode(id).getManagedMemoryOperatorScopeUseCaseWeights(),
                 id -> streamGraph.getStreamNode(id).getManagedMemorySlotScopeUseCases());
-
+        OperatorDescriptorUtils.setOperatorDescriptors(
+                Collections.unmodifiableMap(this.jobVertices),
+                operatorNodeId -> (this.vertexConfigs.get(operatorNodeId)).getOperatorID(),
+                headOperatorNodeId ->
+                        (this.chainedConfigs.getOrDefault(
+                                        headOperatorNodeId, Collections.emptyMap()))
+                                .keySet(),
+                this.streamGraph::getStreamNode);
         configureCheckpointing();
 
         jobGraph.setSavepointRestoreSettings(streamGraph.getSavepointRestoreSettings());

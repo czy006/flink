@@ -366,7 +366,8 @@ public class JobExceptionsHandlerTest extends TestLogger {
                 1,
                 1,
                 ResourceProfile.UNKNOWN,
-                emptyAccumulators);
+                emptyAccumulators,
+                new JobVertexID[1]);
     }
 
     // -------- exception history related utility methods for creating the input data --------
